@@ -1,0 +1,12 @@
+HTTrack3.49-2+htsswf+htsjava launched on Tue, 15 Sep 2026 16:50:02 at https://cate.meme/ +*.png +*.gif +*.jpg +*.jpeg +*.css +*.js -ad.doubleclick.net/* -mime:application/foobar
+(winhttrack -qwC2%Ps2u1%s%uN0%I0p3DaK0H0%kf2A25000%f#f -F "Mozilla/4.5 (compatible; HTTrack 3.0x; Windows 98)" -%F "<!-- Mirrored from %s%s by HTTrack Website Copier/3.x [XR&CO'2014], %s -->" -%l "en, *" https://cate.meme/ -O1 "F:\work\track\cate" +*.png +*.gif +*.jpg +*.jpeg +*.css +*.js -ad.doubleclick.net/* -mime:application/foobar )
+
+Information, Warnings and Errors reported for this mirror:
+note:	the hts-log.txt file, and hts-cache folder, may contain sensitive information,
+	such as username/password authentication for websites mirrored in this project
+	do not share these files/folders if you want these information to remain private
+
+16:50:09	Error: 	"Not Found" (404) at link https://cate.meme/og-image.jpg (from https://cate.meme/)
+
+HTTrack Website Copier/3.49-2 mirror complete in 7 seconds : 3 links scanned, 1 files written (623578 bytes overall) [450075 bytes received at 64296 bytes/sec], 629992 bytes transferred using HTTP compression in 3 files, ratio 71%, 1.5 requests per connection
+(1 errors, 0 warnings, 0 messages)

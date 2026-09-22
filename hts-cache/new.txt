@@ -1,0 +1,4 @@
+date	size'/'remotesize	flags(request:Update,Range state:File response:Modified,Chunked,gZipped)	statuscode	status ('servermsg')	MIME	Etag|Date	URL	localfile	(from URL)
+16:50:06	1903/1903	---M-Z	404	error ('Not%20Found')	text/html	etag:%22119f-69686db2-b837dc8c6c627081;gz%22	https://cate.meme/robots.txt		(from )
+16:50:08	623578/623578	---MCZ	200	added ('OK')	text/html	etag:%22983da-6a86dc9e-ae8df0309a7c96f3;gz%22	https://cate.meme/	F:/work/track/cate/cate.meme/index.html	(from )
+16:50:09	4511/4511	---M-Z	404	error ('Not%20Found')	text/html	etag:W/%22119f-69686db2-b837dc8c6c627081;;;%22	https://cate.meme/og-image.jpg	F:/work/track/cate/cate.meme/og-image.jpg	(from https://cate.meme/)
