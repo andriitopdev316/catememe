@@ -46,9 +46,9 @@ async function cacheNetwork(ip, data, ttlMs) {
 async function allow(ip, bucket, limit, windowMs) {
   const result = await pool.query(`INSERT INTO tracking_rate_limits (ip, bucket, window_started_at, count) VALUES ($1, $2, NOW(), 1)
     ON CONFLICT (ip, bucket) DO UPDATE SET
-      count = CASE WHEN tracking_rate_limits.window_started_at < NOW() - ($4 * INTERVAL '1 millisecond') THEN 1 ELSE tracking_rate_limits.count + 1 END,
-      window_started_at = CASE WHEN tracking_rate_limits.window_started_at < NOW() - ($4 * INTERVAL '1 millisecond') THEN NOW() ELSE tracking_rate_limits.window_started_at END
-    RETURNING count`, [ip, bucket, limit, windowMs]);
+      count = CASE WHEN tracking_rate_limits.window_started_at < NOW() - ($3 * INTERVAL '1 millisecond') THEN 1 ELSE tracking_rate_limits.count + 1 END,
+      window_started_at = CASE WHEN tracking_rate_limits.window_started_at < NOW() - ($3 * INTERVAL '1 millisecond') THEN NOW() ELSE tracking_rate_limits.window_started_at END
+    RETURNING count`, [ip, bucket, windowMs]);
   return result.rows[0].count <= limit;
 }
 
