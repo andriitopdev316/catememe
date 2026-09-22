@@ -11,6 +11,7 @@ const dataFile = path.join(__dirname, 'visitors.json');
 const invitesFile = path.join(__dirname, 'invites.json');
 const adminPassword = process.env.ADMIN_PASSWORD || 'admin';
 const sessions = new Set();
+const trackingRateLimits = new Map();
 const contentTypes = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -55,10 +56,8 @@ function authorized(request) {
 }
 function clientIp(request) {
   const candidates = [
-    request.headers['cf-connecting-ip'] || '',
-    request.headers['true-client-ip'] || '',
-    request.headers['fly-client-ip'] || '',
-    ...(request.headers['x-forwarded-for'] || '').split(','),
+    // Railway supplies this value at its edge. Do not accept generic forwarded
+    // headers because a browser can send those itself.
     request.headers['x-real-ip'] || '',
     request.socket.remoteAddress || ''
   ].map(value => value.trim()).filter(Boolean);
@@ -69,6 +68,27 @@ function clientIp(request) {
     if (net.isIP(candidate)) return candidate;
   }
   return 'Unavailable';
+}
+function trackingAllowed(ip) {
+  const now = Date.now();
+  const windowMs = 60 * 1000;
+  const maximumRequests = 30;
+  const current = trackingRateLimits.get(ip);
+  const entry = !current || now - current.startedAt >= windowMs ? {startedAt: now, count: 0} : current;
+  entry.count += 1;
+  trackingRateLimits.set(ip, entry);
+  if (trackingRateLimits.size > 10000) {
+    for (const [key, value] of trackingRateLimits) if (now - value.startedAt >= windowMs) trackingRateLimits.delete(key);
+  }
+  return entry.count <= maximumRequests;
+}
+function visitorKey(input) {
+  const key = String(input.visitorKey || '');
+  return /^[a-f0-9]{64}$/i.test(key) ? key : '';
+}
+function publicVisitor(visitor) {
+  const {visitorKey, ...value} = visitor;
+  return value;
 }
 function lookupIp(ip) {
   const unavailable = {country: 'Unavailable', region: 'Unavailable', city: 'Unavailable', timezone: 'Unavailable', isp: 'Unavailable', asn: 'Unavailable', connectionType: 'Unavailable', vpn: 'VPN check unavailable', vpnActive: null, vpnCheckState: 'unavailable'};
@@ -199,10 +219,17 @@ const server = http.createServer(async (request, response) => {
     if (request.method === 'POST' && url.pathname === '/api/visitors') {
       const input = await body(request);
       const identity = String(input.id || crypto.randomUUID()).slice(0, 100);
+      const key = visitorKey(input);
+      const ip = clientIp(request);
+      if (!trackingAllowed(ip)) return json(response, 429, {error: 'Too many tracking requests'});
       const now = new Date().toISOString();
       const currentVisitors = readVisitors();
       const current = currentVisitors.find(visitor => visitor.id === identity);
-      const ip = clientIp(request);
+      if (!key) return json(response, 400, {error: 'A visitor key is required'});
+      const existingKey = String(current?.visitorKey || '');
+      if (existingKey && (!/^[a-f0-9]{64}$/i.test(existingKey) || !crypto.timingSafeEqual(Buffer.from(existingKey), Buffer.from(key)))) {
+        return json(response, 403, {error: 'Visitor identity is not authorized'});
+      }
       const reusePrevious = current && input.event !== 'visit';
       const network = reusePrevious ? {
         country: current.country, region: current.region, city: current.city,
@@ -215,6 +242,7 @@ const server = http.createServer(async (request, response) => {
       const invite = previous ? {inviteCode: previous.inviteCode, inviteName: previous.inviteName} : inviteContext(input);
       const record = {
         id: identity, ip,
+        visitorKey: current?.visitorKey || key,
         country: request.headers['cf-ipcountry'] || request.headers['x-country'] || network.country,
         region: network.region, city: network.city, geoTimezone: network.timezone,
         isp: network.isp, asn: network.asn, connectionType: network.connectionType, vpn: network.vpn, vpnActive: network.vpnActive, vpnCheckState: network.vpnCheckState, vpnCheckVersion: 6,
@@ -227,7 +255,7 @@ const server = http.createServer(async (request, response) => {
       const index = visitors.findIndex(visitor => visitor.id === identity);
       if (index >= 0) visitors[index] = {...visitors[index], ...record}; else visitors.push(record);
       writeVisitors(visitors);
-      return json(response, 200, record);
+      return json(response, 200, publicVisitor(record));
     }
     if (request.method === 'POST' && url.pathname === '/api/admin/login') {
       const input = await body(request);
@@ -269,7 +297,7 @@ const server = http.createServer(async (request, response) => {
         }
       }
       if (changed) writeVisitors(visitors);
-      return json(response, 200, visitors);
+      return json(response, 200, visitors.map(publicVisitor));
     }
     if (request.method === 'DELETE' && url.pathname.startsWith('/api/visitors/')) {
       if (!authorized(request)) return json(response, 401, {error: 'Unauthorized'});

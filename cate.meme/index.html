@@ -1182,7 +1182,7 @@ body.scrolled .hint{opacity:0}
   'use strict';
   var KEY='cate-admin-users';
   var VISITOR_KEY='cate-visitor-id';
-  var INVITE_KEY='cate-visitor-invite';
+  var VISITOR_SECRET_KEY='cate-visitor-secret';
   var activeVisitId='',activeSessionStartedAt='';
 
   function readUsers(){
@@ -1190,6 +1190,19 @@ body.scrolled .hint{opacity:0}
   }
   function writeUsers(users){
     try{localStorage.setItem(KEY,JSON.stringify(users));}catch(e){}
+  }
+  function visitorSecret(){
+    try{
+      var value=localStorage.getItem(VISITOR_SECRET_KEY)||'';
+      if(!/^[a-f0-9]{64}$/i.test(value)){
+        if(!window.crypto||!window.crypto.getRandomValues)return '';
+        var bytes=new Uint8Array(32);
+        window.crypto.getRandomValues(bytes);
+        value=Array.prototype.map.call(bytes,function(byte){return byte.toString(16).padStart(2,'0');}).join('');
+        localStorage.setItem(VISITOR_SECRET_KEY,value);
+      }
+      return value;
+    }catch(e){return '';}
   }
   function browserInfo(){
     var ua=navigator.userAgent||'';
@@ -1207,7 +1220,7 @@ body.scrolled .hint{opacity:0}
     var connection=nav.connection||nav.mozConnection||nav.webkitConnection||{};
     var networkType=connection.type||connection.effectiveType||'Unavailable';
     return {
-      ref:(function(){var code=(new URLSearchParams(location.search).get('ref')||'').trim();try{if(code)localStorage.setItem(INVITE_KEY,code);return code||localStorage.getItem(INVITE_KEY)||'';}catch(e){return code;}})(),
+      ref:(new URLSearchParams(location.search).get('ref')||'').trim(),
       language:nav.language||'',
       timezone:(Intl.DateTimeFormat().resolvedOptions().timeZone)||'',
       platform:nav.userAgentData&&nav.userAgentData.platform||nav.platform||'',
@@ -1223,13 +1236,15 @@ body.scrolled .hint{opacity:0}
     var users=readUsers(),id='visitor-'+Date.now()+'-'+Math.random().toString(36).slice(2,8),now=new Date().toISOString();
     var sessionStartedAt=now;
     try{id=localStorage.getItem(VISITOR_KEY)||id;localStorage.setItem(VISITOR_KEY,id);}catch(e){}
+    var visitorKey=visitorSecret();
+    if(!visitorKey)return;
     activeVisitId=id;activeSessionStartedAt=sessionStartedAt;
     var record=Object.assign({id:id,ip:'Unavailable',country:'Unavailable',vpn:'Unknown',browser:browserInfo(),device:deviceInfo(),lastSeen:now,sessionStartedAt:sessionStartedAt},visitContext());
     var existing=users.findIndex(function(user){return user.id===id;});
     if(existing>-1)users[existing]=Object.assign({},users[existing],record);else users.push(record);
     writeUsers(users);
     if(typeof fetch==='function'){
-      fetch('/api/visitors',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({id:id,event:'visit',sessionStartedAt:sessionStartedAt},visitContext())),cache:'no-store'}).then(function(response){
+      fetch('/api/visitors',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({id:id,visitorKey:visitorKey,event:'visit',sessionStartedAt:sessionStartedAt},visitContext())),cache:'no-store'}).then(function(response){
         if(!response.ok)throw new Error(response.status);
         return response.json();
       }).then(function(data){
@@ -1245,9 +1260,9 @@ body.scrolled .hint{opacity:0}
   }
   function heartbeat(final){
     if(typeof fetch!=='function')return;
-    var id=activeVisitId,sessionStartedAt=activeSessionStartedAt;
-    if(!id||!sessionStartedAt)return;
-    var payload=JSON.stringify(Object.assign({id:id,event:'heartbeat',sessionStartedAt:sessionStartedAt},visitContext()));
+    var id=activeVisitId,sessionStartedAt=activeSessionStartedAt,visitorKey=visitorSecret();
+    if(!id||!sessionStartedAt||!visitorKey)return;
+    var payload=JSON.stringify(Object.assign({id:id,visitorKey:visitorKey,event:'heartbeat',sessionStartedAt:sessionStartedAt},visitContext()));
     if(final&&navigator.sendBeacon){
       navigator.sendBeacon('/api/visitors',new Blob([payload],{type:'application/json'}));
       return;
