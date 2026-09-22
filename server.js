@@ -120,12 +120,30 @@ function browser(userAgent) {
   const name = userAgent.includes('Edg/') ? 'Edge' : userAgent.includes('Firefox/') ? 'Firefox' : userAgent.includes('Chrome/') ? 'Chrome' : userAgent.includes('Safari/') ? 'Safari' : 'Other';
   return name + (match ? ` ${match[1]}` : '');
 }
+// User-Agent model identifiers are inconsistent and increasingly redacted by browsers.
+// Keep this deliberately small and return the code whenever it is not a known match.
+const deviceModels = {
+  'STK-L21': 'Huawei Y9 Prime'
+};
+function androidModel(userAgent) {
+  const androidSection = userAgent.match(/Android\s+[\d.]+;\s*([^)]*)\)/i);
+  if (!androidSection) return '';
+  const value = androidSection[1]
+    .replace(/\s+Build\/.*$/i, '')
+    .split(';').map(part => part.trim()).filter(Boolean).pop() || '';
+  const code = value.match(/[A-Z]{2,}[A-Z0-9-]{2,}/i)?.[0]?.toUpperCase() || '';
+  if (!code) return '';
+  return deviceModels[code] ? `${deviceModels[code]} (${code})` : code;
+}
 function device(userAgent) {
   const windows = userAgent.match(/Windows NT ([\d.]+)/);
   const android = userAgent.match(/Android ([\d.]+)/);
   const mac = userAgent.match(/Mac OS X ([\d_]+)/);
   if (windows) return `PC - Windows ${windows[1]}`;
-  if (android) return `Mobile - Android ${android[1]}`;
+  if (android) {
+    const model = androidModel(userAgent);
+    return model ? `Mobile - ${model} · Android ${android[1]}` : `Mobile - Android ${android[1]}`;
+  }
   if (/iPhone/i.test(userAgent)) return 'Mobile - iPhone';
   if (mac) return `Mac - macOS ${mac[1].replace(/_/g, '.')}`;
   if (/Linux/i.test(userAgent)) return 'PC - Linux';
