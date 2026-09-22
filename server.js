@@ -1,3 +1,5 @@
+require('./server.postgres');
+if (false) {
 const http = require('http');
 const https = require('https');
 const fs = require('fs');
@@ -118,9 +120,9 @@ function lookupIp(ip) {
           const confidence = Number.isFinite(Number(detections.confidence)) ? ` · ${detections.confidence}% confidence` : '';
           const provider = String(network.provider || network.organisation || '').trim();
           resolve({
-            country: location.country || 'Unavailable',
-            region: location.region || 'Unavailable',
-            city: location.city || 'Unavailable',
+            country: location.country_name || 'Unavailable',
+            region: location.region_name || 'Unavailable',
+            city: location.city_name || 'Unavailable',
             timezone: location.timezone || 'Unavailable',
             isp: provider || 'Unavailable',
             asn: network.asn || 'Unavailable',
@@ -242,7 +244,8 @@ const server = http.createServer(async (request, response) => {
       const visitors = readVisitors();
       const previous = visitors.find(visitor => visitor.id === identity);
       const context = clientContext(input, request);
-      const invite = previous ? {inviteCode: previous.inviteCode, inviteName: previous.inviteName} : inviteContext(input);
+      // Attribution describes the current visit, not a referral stored from an earlier visit.
+      const invite = inviteContext(input);
       const record = {
         id: identity, ip,
         visitorKey: current?.visitorKey || key,
@@ -323,3 +326,4 @@ const server = http.createServer(async (request, response) => {
 });
 
 server.listen(port, () => console.log(`CATECOIN server listening on ${port}`));
+}
