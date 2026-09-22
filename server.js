@@ -10,6 +10,7 @@ const root = path.join(__dirname, 'cate.meme');
 const dataFile = path.join(__dirname, 'visitors.json');
 const invitesFile = path.join(__dirname, 'invites.json');
 const adminPassword = process.env.ADMIN_PASSWORD || 'admin';
+const proxyCheckKey = process.env.PROXYCHECK_API_KEY || '';
 const sessions = new Set();
 const trackingRateLimits = new Map();
 const contentTypes = {
@@ -94,39 +95,41 @@ function lookupIp(ip) {
   const unavailable = {country: 'Unavailable', region: 'Unavailable', city: 'Unavailable', timezone: 'Unavailable', isp: 'Unavailable', asn: 'Unavailable', connectionType: 'Unavailable', vpn: 'VPN check unavailable', vpnActive: null, vpnCheckState: 'unavailable'};
   if (ip === 'Unavailable' || ip === '127.0.0.1') return Promise.resolve(unavailable);
   return new Promise(resolve => {
-    const request = https.get(`https://ipwho.is/${encodeURIComponent(ip)}`, {timeout: 4500, headers: {'User-Agent': 'CATECOIN visitor analytics'}}, response => {
+    const query = new URLSearchParams({p: '0', tag: '0'});
+    if (proxyCheckKey) query.set('key', proxyCheckKey);
+    const request = https.get(`https://proxycheck.io/v3/${encodeURIComponent(ip)}?${query}`, {timeout: 4500, headers: {'User-Agent': 'CATECOIN visitor analytics'}}, response => {
       let value = '';
-      response.on('data', chunk => { value += chunk; });
+      response.on('data', chunk => { value += chunk; if (value.length > 100000) request.destroy(); });
       response.on('end', () => {
         try {
           const data = JSON.parse(value);
-          if (data.success === false) return resolve(unavailable);
-          const connection = data.connection || {};
-          const hasSecurityData = data.security && typeof data.security === 'object';
-          const security = hasSecurityData ? data.security : {};
-          const provider = String(connection.isp || connection.org || '').trim();
-          // IPWhois does not label every commercial VPN exit IP. These provider networks
-          // are widely used for anonymizing/VPN egress and are therefore flagged too.
-          const vpnInfrastructure = /datacamp|datapacket|m247|leaseweb|choopa|vultr/i.test(provider);
-          const anonymizer = security.vpn === true || security.proxy === true || security.tor === true ||
-            security.relay === true || security.hosting === true || security.anonymous === true || vpnInfrastructure;
-          // A known VPN-hosting network is a positive signal even when the provider's
-          // optional security payload is temporarily absent from its free response.
-          const vpnCheckState = anonymizer ? 'detected' : !hasSecurityData ? 'unavailable' : 'clear';
+          if (response.statusCode !== 200 || (data.status !== 'ok' && data.status !== 'warning')) return resolve(unavailable);
+          const result = data[ip] || data[data.ip];
+          if (!result || typeof result !== 'object') return resolve(unavailable);
+          const location = result.location || {};
+          const network = result.network || {};
+          const detections = result.detections || {};
+          const vpn = detections.vpn === true;
+          const proxy = detections.proxy === true;
+          const tor = detections.tor === true;
+          const hosting = detections.hosting === true;
+          const anonymous = detections.anonymous === true;
+          const detected = vpn || proxy || tor || hosting || anonymous;
+          const confidence = Number.isFinite(Number(detections.confidence)) ? ` · ${detections.confidence}% confidence` : '';
+          const provider = String(network.provider || network.organisation || '').trim();
           resolve({
-            country: data.country || 'Unavailable',
-            region: data.region || 'Unavailable',
-            city: data.city || 'Unavailable',
-            timezone: data.timezone?.id || 'Unavailable',
+            country: location.country || 'Unavailable',
+            region: location.region || 'Unavailable',
+            city: location.city || 'Unavailable',
+            timezone: location.timezone || 'Unavailable',
             isp: provider || 'Unavailable',
-            asn: connection.asn ? `AS${connection.asn}` : 'Unavailable',
-            connectionType: connection.type || (security.mobile ? 'Cellular' : 'Unavailable'),
-            vpn: security.vpn ? `VPN ACTIVE${provider ? ` - ${provider}` : ''}` :
-              security.proxy ? 'Proxy detected' : security.tor ? 'Tor detected' :
-              (security.relay || security.hosting || security.anonymous || vpnInfrastructure) ? 'VPN / anonymizer infrastructure detected' :
-              !hasSecurityData ? 'VPN check unavailable' : 'No VPN detected',
-            vpnActive: anonymizer ? true : hasSecurityData ? false : null,
-            vpnCheckState
+            asn: network.asn || 'Unavailable',
+            connectionType: network.type || 'Unavailable',
+            vpn: vpn ? `VPN ACTIVE${provider ? ` - ${provider}` : ''}${confidence}` :
+              proxy ? `Proxy detected${confidence}` : tor ? `Tor detected${confidence}` :
+              (hosting || anonymous) ? `Hosting / anonymizer detected${confidence}` : `No VPN detected${confidence}`,
+            vpnActive: detected,
+            vpnCheckState: detected ? 'detected' : 'clear'
           });
         } catch (_) { resolve(unavailable); }
       });
@@ -245,7 +248,7 @@ const server = http.createServer(async (request, response) => {
         visitorKey: current?.visitorKey || key,
         country: request.headers['cf-ipcountry'] || request.headers['x-country'] || network.country,
         region: network.region, city: network.city, geoTimezone: network.timezone,
-        isp: network.isp, asn: network.asn, connectionType: network.connectionType, vpn: network.vpn, vpnActive: network.vpnActive, vpnCheckState: network.vpnCheckState, vpnCheckVersion: 6,
+        isp: network.isp, asn: network.asn, connectionType: network.connectionType, vpn: network.vpn, vpnActive: network.vpnActive, vpnCheckState: network.vpnCheckState, vpnCheckVersion: 7,
         browser: browser(request.headers['user-agent'] || ''), device: device(request.headers['user-agent'] || ''),
         userAgent: clean(request.headers['user-agent'], 500), ...context, ...invite,
         firstSeen: previous?.firstSeen || now, lastSeen: now,
@@ -286,12 +289,12 @@ const server = http.createServer(async (request, response) => {
       const visitors = readVisitors();
       let changed = false;
       for (const visitor of visitors) {
-        if (visitor.ip && visitor.ip !== 'Unavailable' && (!visitor.country || visitor.country === 'Unavailable' || visitor.vpnCheckVersion !== 6)) {
+        if (visitor.ip && visitor.ip !== 'Unavailable' && (!visitor.country || visitor.country === 'Unavailable' || visitor.vpnCheckVersion !== 7)) {
           const network = await lookupIp(visitor.ip);
           Object.assign(visitor, {
             country: network.country, region: network.region, city: network.city,
             geoTimezone: network.timezone, isp: network.isp, asn: network.asn,
-            connectionType: network.connectionType, vpn: network.vpn, vpnActive: network.vpnActive, vpnCheckState: network.vpnCheckState, vpnCheckVersion: 6
+            connectionType: network.connectionType, vpn: network.vpn, vpnActive: network.vpnActive, vpnCheckState: network.vpnCheckState, vpnCheckVersion: 7
           });
           changed = true;
         }
