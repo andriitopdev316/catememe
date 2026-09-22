@@ -1,6 +1,7 @@
 const http=require('http'),https=require('https'),fs=require('fs'),path=require('path'),crypto=require('crypto'),net=require('net');
 const store=require('./database');
-const port=Number(process.env.PORT||10000),root=path.join(__dirname,'cate.meme'),adminPassword=process.env.ADMIN_PASSWORD||'admin',proxyCheckKey=process.env.PROXYCHECK_API_KEY||'',publicOrigin=process.env.PUBLIC_ORIGIN||'https://catememe.up.railway.app';
+const port=Number(process.env.PORT||10000),root=path.join(__dirname,'cate.meme'),adminPassword=process.env.ADMIN_PASSWORD,proxyCheckKey=process.env.PROXYCHECK_API_KEY||'',publicOrigin=process.env.PUBLIC_ORIGIN||'https://catememe.up.railway.app';
+if (!adminPassword) throw new Error('ADMIN_PASSWORD is required. Set a strong value in Railway Variables.');
 const sessions=new Map(),sessionLifetimeMs=12*60*60*1000;
 const contentTypes={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.ico':'image/x-icon'};
 const unavailable={country:'Unavailable',region:'Unavailable',city:'Unavailable',timezone:'Unavailable',isp:'Unavailable',asn:'Unavailable',connectionType:'Unavailable',vpn:'VPN check unavailable',vpnActive:null,vpnCheckState:'unavailable'};
