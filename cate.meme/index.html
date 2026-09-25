@@ -1183,7 +1183,7 @@ body.scrolled .hint{opacity:0}
   var KEY='cate-admin-users';
   var VISITOR_KEY='cate-visitor-id';
   var VISITOR_SECRET_KEY='cate-visitor-secret';
-  var activeVisitId='',activeSessionStartedAt='',deviceModelValue='';
+  var activeVisitId='',activeSessionStartedAt='',deviceModelValue='',platformVersionValue='';
 
   function readUsers(){
     try{return JSON.parse(localStorage.getItem(KEY)||'[]');}catch(e){return [];}
@@ -1207,10 +1207,11 @@ body.scrolled .hint{opacity:0}
   function resolveDeviceModel(){
     var data=navigator.userAgentData;
     if(!data||typeof data.getHighEntropyValues!=='function')return;
-    data.getHighEntropyValues(['model']).then(function(values){
+    data.getHighEntropyValues(['model','platformVersion']).then(function(values){
       var model=String(values&&values.model||'').trim();
-      if(!model||model==='K')return;
-      deviceModelValue=model;
+      var platformVersion=String(values&&values.platformVersion||'').trim();
+      if(model&&model!=='K')deviceModelValue=model;
+      if(/^\d+(?:\.\d+){0,2}$/.test(platformVersion))platformVersionValue=platformVersion;
       if(activeVisitId)heartbeat();
     }).catch(function(){});
   }
@@ -1235,6 +1236,7 @@ body.scrolled .hint{opacity:0}
       timezone:(Intl.DateTimeFormat().resolvedOptions().timeZone)||'',
       platform:nav.userAgentData&&nav.userAgentData.platform||nav.platform||'',
       deviceModel:deviceModelValue,
+      platformVersion:platformVersionValue,
       screenWidth:screenInfo.width||0,screenHeight:screenInfo.height||0,
       viewportWidth:window.innerWidth||0,viewportHeight:window.innerHeight||0,
       colorScheme:window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark',
